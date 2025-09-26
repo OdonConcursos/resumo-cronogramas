@@ -68,14 +68,21 @@
     /* Proxy local da Vercel (api/gs.js). */
     const API_LOCAL = "/api/gs";
 
-    // Pergunta especial cuja parte de exemplo deve ser omitida
+    // Pergunta cuja parte "Ex: ..." deve ser ocultada
     const SPECIAL_Q = "Quer incluir ou remover alguma disciplina do seu cronograma?";
 
+    // Frase que deve ser removida SEMPRE de qualquer pergunta
+    const ALWAYS_REMOVE_RX = /\(\s*se for sem edital aberto,\s*escreva isso na última pergunta\s*\)/gi;
+
     function cleanQuestionHeader(h) {
-      // Remove apenas o trecho de exemplo dessa pergunta específica.
-      const s = String(h || "").trim();
+      let s = String(h || "").trim();
+
+      // Remove a frase "(se for sem edital aberto, escreva isso na última pergunta)" em qualquer pergunta
+      s = s.replace(ALWAYS_REMOVE_RX, "").trim();
+
+      // Para a pergunta especial, cortamos qualquer "Ex: ..." após o enunciado principal
       if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) {
-        return SPECIAL_Q; // mantém só a pergunta até o "?"
+        return SPECIAL_Q;
       }
       return s;
     }
@@ -206,7 +213,7 @@
       });
     }
 
-    // Copia com perguntas em _itálico_ e resposta abaixo; remove o exemplo da pergunta especial
+    // Copia com perguntas em _itálico_ e resposta abaixo; remove a frase global e o "Ex:" da pergunta especial
     function buildCopyFromFields(it){
       const title = it.whatsAppTitle || `*SOLICITAÇÃO — ${it.tipo || "SIMPLES"}*`;
       const lines = [ title ];
