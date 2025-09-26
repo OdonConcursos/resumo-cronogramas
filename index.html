@@ -33,6 +33,15 @@
     .muted{color:var(--muted)}
     .counts{font-weight:700;margin:6px 0 0}
     .footnote{color:var(--muted);font-size:12px;margin-top:4px}
+
+    /* Toast */
+    .toast{
+      position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+      background:#0f172a;color:#f8fafc;border-radius:10px;padding:10px 14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.2);opacity:0;pointer-events:none;
+      transition:opacity .25s ease, transform .25s ease;font-weight:600
+    }
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   </style>
 </head>
 <body>
@@ -64,26 +73,21 @@
     </div>
   </div>
 
+  <!-- Toast -->
+  <div id="toast" class="toast">copiado para área de transferência</div>
+
   <script>
     /* Proxy local da Vercel (api/gs.js). */
     const API_LOCAL = "/api/gs";
 
-    // Pergunta cuja parte "Ex: ..." deve ser ocultada
+    // Regras de limpeza de perguntas:
     const SPECIAL_Q = "Quer incluir ou remover alguma disciplina do seu cronograma?";
-
-    // Frase que deve ser removida SEMPRE de qualquer pergunta
     const ALWAYS_REMOVE_RX = /\(\s*se for sem edital aberto,\s*escreva isso na última pergunta\s*\)/gi;
 
     function cleanQuestionHeader(h) {
       let s = String(h || "").trim();
-
-      // Remove a frase "(se for sem edital aberto, escreva isso na última pergunta)" em qualquer pergunta
       s = s.replace(ALWAYS_REMOVE_RX, "").trim();
-
-      // Para a pergunta especial, cortamos qualquer "Ex: ..." após o enunciado principal
-      if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) {
-        return SPECIAL_Q;
-      }
+      if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) return SPECIAL_Q;
       return s;
     }
 
@@ -93,9 +97,9 @@
     const windowLabelEl = document.getElementById("windowLabel");
     const genInfoEl = document.getElementById("genInfo");
     const countsEl = document.getElementById("counts");
+    const toastEl = document.getElementById("toast");
 
     let currentSummary = null;
-    let historyList = [];
 
     init();
     scheduleAutoRefreshAt8am();
@@ -113,8 +117,7 @@
         renderSummary(currentSummary);
 
         const hist = await apiGet({ action: "history" });
-        historyList = (hist && hist.windows) ? hist.windows : [];
-        fillHistorySelect(historyList, currentSummary);
+        fillHistorySelect(hist && hist.windows ? hist.windows : [], currentSummary);
       }catch(err){
         windowLabelEl.textContent = "Erro ao carregar dados.";
         genInfoEl.textContent = String(err);
@@ -213,7 +216,7 @@
       });
     }
 
-    // Copia com perguntas em _itálico_ e resposta abaixo; remove a frase global e o "Ex:" da pergunta especial
+    // Monta texto para WhatsApp com perguntas _em itálico_ e resposta abaixo
     function buildCopyFromFields(it){
       const title = it.whatsAppTitle || `*SOLICITAÇÃO — ${it.tipo || "SIMPLES"}*`;
       const lines = [ title ];
@@ -240,7 +243,7 @@
       if(!text) return;
       if(navigator.clipboard && navigator.clipboard.writeText){
         navigator.clipboard.writeText(text).then(()=>{
-          flash("Copiado!");
+          showToast();
         }).catch(()=>{
           legacyCopy(text);
         });
@@ -256,14 +259,17 @@
       ta.style.left = "-9999px";
       document.body.appendChild(ta);
       ta.select();
-      try{ document.execCommand("copy"); flash("Copiado!"); }
+      try{ document.execCommand("copy"); showToast(); }
       catch(e){ alert("Copie manualmente:\n\n" + text); }
       ta.remove();
     }
 
-    function flash(msg){
-      btnCopyAll.textContent = msg;
-      setTimeout(()=> btnCopyAll.textContent = "Copiar tudo", 1200);
+    // Exibe “copiado para área de transferência” por ~1.2s
+    let toastTimer = null;
+    function showToast(){
+      toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(()=> toastEl.classList.remove("show"), 1200);
     }
 
     function scheduleAutoRefreshAt8am(){
