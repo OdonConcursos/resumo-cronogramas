@@ -81,13 +81,20 @@
   <script>
     const API_LOCAL = "/api/gs";
 
-    /* Limpezas de perguntas */
+    /* Limpezas de perguntas (ocultamos textos-guia para deixar o resumo mais curto) */
     const SPECIAL_Q = "Quer incluir ou remover alguma disciplina do seu cronograma?";
     const RX_SEM_EDITAL = /\(\s*se\s+for\s+sem\s+edital\s+aberto,\s*escreva\s+isso\s+na\s+(?:última|última|próxima|próxima)\s+pergunta\s*\)/gi;
     const RX_INSIRA_CARGO = /insira\s+aqui\s+o\s+cargo\s*\(\s*s[eé]?\s*necess[aá]rio\s*\)\s*e\s*informe\s*se\s*for\s*um\s*edital\s*que\s*ainda\s*n[aã]o\s*tem\s*data\s*de\s*prova/gi;
+    // Nova: remove a orientação longa “Some sua disponibilidade diária…” (qualquer variação de espaços/linhas)
+    const RX_DISPONIBILIDADE = /some\s+sua\s+disponibilidade[\s\S]*?responder\s+aqui\s+a\s+sua\s+disponibilidade\.?/gi;
+
     function cleanQuestionHeader(h){
       let s = String(h||"").trim();
-      s = s.replace(RX_SEM_EDITAL,"").replace(RX_INSIRA_CARGO,"").trim();
+      s = s
+        .replace(RX_SEM_EDITAL,"")
+        .replace(RX_INSIRA_CARGO,"")
+        .replace(RX_DISPONIBILIDADE,"")
+        .trim();
       if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) return SPECIAL_Q;
       return s;
     }
@@ -161,7 +168,6 @@
 
     /* -------- Construção dos blocos preservando a ordem -------- */
 
-    // Pré-analisa os campos para cada Edital (1..3)
     function analyzeEditais(fields){
       const info = {
         1: {firstIdx:null, idxSet:new Set(), name:null, date:null, obs:null, link:null, extras:[]},
@@ -179,7 +185,7 @@
             else if (DATA_RX.test(f.header) && !info[n].date) info[n].date = val;
             else if (OBS_RX.test(f.header)  && !info[n].obs)  info[n].obs  = val;
             else if (LINK_RX.test(f.header) && !info[n].link) info[n].link = val;
-            else info[n].extras.push(val); // outros campos de Edital
+            else info[n].extras.push(val);
           }
         }
       });
@@ -229,9 +235,7 @@
         const ed = analyzeEditais(fields);
         const renderedEdital = {1:false,2:false,3:false};
 
-        // percorre na ordem da planilha
         fields.forEach((f, i)=>{
-          // se este índice é o primeiro de algum edital e ainda não foi renderizado, renderiza o bloco compacto
           for (const n of [1,2,3]){
             if (!renderedEdital[n] && ed[n].firstIdx === i && editalHasContent(ed[n])){
               const sec = document.createElement("div"); sec.className="section";
@@ -242,21 +246,17 @@
               });
               card.appendChild(sec);
               renderedEdital[n] = true;
-              return; // não renderiza o campo individual deste índice
+              return;
             }
           }
-
-          // se este campo pertence a um edital já renderizado, pula
           if ([1,2,3].some(n => ed[n].idxSet.has(i))) return;
 
-          // campo normal (fora de Edital) → pergunta/resposta
           const block = document.createElement("div"); block.className="block";
           const q = document.createElement("div"); q.className="q"; q.textContent = cleanQuestionHeader(f.header);
           const a = document.createElement("div"); a.className="a"; a.textContent = f.value ?? "";
           block.appendChild(q); block.appendChild(a); card.appendChild(block);
         });
 
-        // Ações
         const actions = document.createElement("div"); actions.className="actions";
         const btn = document.createElement("button"); btn.textContent = "Copiar";
         btn.addEventListener("click", ()=>copyText(buildCopyFromItem(it)));
@@ -280,7 +280,7 @@
           if (!renderedEdital[n] && ed[n].firstIdx === i && editalHasContent(ed[n])){
             lines.push(`*Edital ${n}*`);
             buildEditalValues(ed[n]).forEach(v=>lines.push(String(v)));
-            lines.push(""); // espaço após o bloco
+            lines.push("");
             renderedEdital[n] = true;
             return;
           }
