@@ -6,17 +6,9 @@
   <title>Resumo diário do cronograma</title>
   <style>
     :root{
-      --bg:#f5f7fb;
-      --ink:#0f172a;
-      --muted:#475569;
-      --brand:#ec4899;
-      --card:#ffffff;
-      --line:#e2e8f0;
-      --chip:#111827;
-      --chipText:#f8fafc;
-      --warnBg:#fff7e6;
-      --warnBorder:#facc15;
-      --dark:#0b1220;
+      --bg:#f5f7fb; --ink:#0f172a; --muted:#475569; --brand:#ec4899;
+      --card:#ffffff; --line:#e2e8f0; --chip:#111827; --chipText:#f8fafc;
+      --warnBg:#fff7e6; --warnBorder:#facc15; --dark:#0b1220;
     }
     *{box-sizing:border-box}
     html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
@@ -24,28 +16,15 @@
     header{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
     header h1{font-size:22px;margin:0;font-weight:800}
     .toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0 16px}
-    select,button{
-      border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;font:inherit;cursor:pointer
-    }
+    select,button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;font:inherit;cursor:pointer}
     button.primary{background:var(--brand);border-color:var(--brand);color:white;font-weight:700}
-    .note{
-      background:var(--warnBg);border:1px solid var(--warnBorder);
-      padding:12px 14px;border-radius:10px;margin:10px 0 16px;color:#7a5b00
-    }
-    .darkbox{
-      background:var(--dark);color:#e5e7eb;border-radius:12px;padding:16px 18px;margin:8px 0 18px
-    }
+    .note{background:var(--warnBg);border:1px solid var(--warnBorder);padding:12px 14px;border-radius:10px;margin:10px 0 16px;color:#7a5b00}
+    .darkbox{background:var(--dark);color:#e5e7eb;border-radius:12px;padding:16px 18px;margin:8px 0 18px}
     .darkbox .m{color:#9ca3af}
     .grid{display:grid;grid-template-columns:1fr;gap:14px}
-    @media (min-width:860px){ .grid{grid-template-columns:1fr} }
-    .card{
-      background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 12px
-    }
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 12px}
     .card h3{margin:0 0 6px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:10px}
-    .chip{
-      display:inline-block;background:var(--chip);color:var(--chipText);
-      border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700
-    }
+    .chip{display:inline-block;background:var(--chip);color:var(--chipText);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700}
     .fields{margin:10px 0 8px;border-top:1px dashed var(--line);padding-top:10px}
     .row{display:flex;gap:8px;margin:3px 0;align-items:flex-start}
     .key{min-width:180px;color:var(--muted)}
@@ -54,8 +33,6 @@
     .card button{padding:8px 10px;border-radius:10px}
     .muted{color:var(--muted)}
     .counts{font-weight:700;margin:6px 0 0}
-    .right{margin-left:auto}
-    .sep{height:1px;background:var(--line);margin:12px 0}
     .footnote{color:var(--muted);font-size:12px;margin-top:4px}
   </style>
 </head>
@@ -64,7 +41,6 @@
     <header>
       <h1>Resumo diário do cronograma</h1>
       <button id="btnCopyAll" class="primary">Copiar tudo</button>
-      <div class="right"></div>
     </header>
 
     <div class="toolbar">
@@ -90,27 +66,8 @@
   </div>
 
   <script>
-    // === CONFIG ===
-    // Sua URL pública do Apps Script (fornecida por você):
-    const API_BASE = "https://script.google.com/macros/s/AKfycbwQKE1-rZjds0531to4Qb07rBYx_1WsxNwh6-5TVAtWuyu6824wRuPBqFG4C4f48Anx/exec";
-
-    // Utilitário JSONP para contornar CORS
-    function jsonp(url){
-      return new Promise((resolve,reject)=>{
-        const cb = "cb_"+Math.random().toString(36).slice(2);
-        const s = document.createElement("script");
-        const timeout = setTimeout(()=>{ cleanup(); reject(new Error("Timeout JSONP")); }, 30000);
-        window[cb] = data => { cleanup(); resolve(data); };
-        function cleanup(){
-          clearTimeout(timeout);
-          delete window[cb];
-          s.remove();
-        }
-        s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb;
-        s.onerror = ()=>{ cleanup(); reject(new Error("Falha ao carregar JSONP")); };
-        document.body.appendChild(s);
-      });
-    }
+    // Agora usamos a rota local da Vercel (proxy), sem JSONP.
+    const API_LOCAL = "/api/gs";
 
     const selDay = document.getElementById("selDay");
     const btnCopyAll = document.getElementById("btnCopyAll");
@@ -122,18 +79,22 @@
     let currentSummary = null;
     let historyList = [];
 
-    // Carregar tudo na inicialização
     init();
     scheduleAutoRefreshAt8am();
 
+    async function apiGet(params){
+      const url = API_LOCAL + "?" + new URLSearchParams(params).toString();
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error("Falha ao consultar API");
+      return await r.json();
+    }
+
     async function init(){
       try{
-        // 1) Carrega o resumo "do momento" (Apps Script já calcula a janela correta)
-        currentSummary = await jsonp(API_BASE + "?action=summary");
+        currentSummary = await apiGet({ action: "summary" });
         renderSummary(currentSummary);
 
-        // 2) Carrega histórico e posiciona o select
-        const hist = await jsonp(API_BASE + "?action=history");
+        const hist = await apiGet({ action: "history" });
         historyList = (hist && hist.windows) ? hist.windows : [];
         fillHistorySelect(historyList, currentSummary);
       }catch(err){
@@ -144,14 +105,13 @@
 
     function fillHistorySelect(windows, summary){
       selDay.innerHTML = "";
-      windows.forEach((w, idx)=>{
+      windows.forEach((w)=>{
         const opt = document.createElement("option");
         opt.value = w.startISO + "||" + w.endISO;
         opt.textContent = w.label;
         selDay.appendChild(opt);
       });
 
-      // Seleciona a janela que bate com a do summary atual, se existir
       const cur = summary && summary.window ? (summary.window.startISO + "||" + summary.window.endISO) : null;
       if(cur){
         const found = Array.from(selDay.options).find(o => o.value === cur);
@@ -165,10 +125,7 @@
     async function onHistoryChange(){
       const [startISO, endISO] = selDay.value.split("||");
       try{
-        currentSummary = await jsonp(
-          API_BASE + "?action=summary&startISO=" + encodeURIComponent(startISO) +
-          "&endISO=" + encodeURIComponent(endISO)
-        );
+        currentSummary = await apiGet({ action: "summary", startISO, endISO });
         renderSummary(currentSummary);
       }catch(err){
         windowLabelEl.textContent = "Erro ao carregar janela selecionada.";
@@ -177,7 +134,6 @@
     }
 
     function renderSummary(sum){
-      // Cabeçalho (janela, geração, contagens)
       if(sum && sum.window){
         windowLabelEl.textContent = "Janela: " + sum.window.label;
       }else{
@@ -187,7 +143,6 @@
       const c = sum.counts || { total:0, simples:0, complexo:0 };
       countsEl.textContent = `Total de solicitações: ${c.total} (Simples: ${c.simples} • Complexo: ${c.complexo})`;
 
-      // Cards
       cardsEl.innerHTML = "";
       const items = (sum && sum.items) ? sum.items : [];
       if(items.length === 0){
@@ -242,7 +197,6 @@
       });
     }
 
-    // Fallback: se por algum motivo copyText não vier
     function buildFallbackCopy(it){
       const lines = [];
       const title = it.whatsAppTitle || `*SOLICITAÇÃO — ${it.tipo || "SIMPLES"}*`;
@@ -288,7 +242,6 @@
       setTimeout(()=> btnCopyAll.textContent = "Copiar tudo", 1200);
     }
 
-    // Recarrega automaticamente na virada das 08:00
     function scheduleAutoRefreshAt8am(){
       const now = new Date();
       const next = new Date(now);
@@ -297,10 +250,10 @@
       const ms = next - now;
       setTimeout(async ()=>{
         try{
-          currentSummary = await jsonp(API_BASE + "?action=summary");
+          currentSummary = await apiGet({ action: "summary" });
           renderSummary(currentSummary);
         }finally{
-          scheduleAutoRefreshAt8am(); // agenda a próxima virada
+          scheduleAutoRefreshAt8am();
         }
       }, ms);
     }
