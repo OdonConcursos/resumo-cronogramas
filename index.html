@@ -28,7 +28,6 @@
     .section{margin:12px 0 8px}
     .sectionTitle{font-weight:800;margin:0 0 6px}
     .line{white-space:pre-wrap;margin:0 0 6px}
-    .divider{height:1px;background:var(--line);margin:10px 0}
     .block{margin:0 0 12px}
     .q{color:var(--muted);font-weight:600}
     .a{white-space:pre-wrap;margin-top:2px}
@@ -73,34 +72,31 @@
     <div id="cards" class="grid"></div>
 
     <div class="footnote">
-      Ao copiar para o WhatsApp: o título sai em <code>*negrito*</code>, cada bloco <code>*Edital X*</code> vem compacto (só as respostas), e em “Outras informações” somente as perguntas ficam em <code>_itálico_</code>.
+      A cópia para WhatsApp respeita a ordem da planilha: título em <code>*negrito*</code>, cada <code>*Edital X*</code> compacto no ponto em que aparece, e “Outras informações” com perguntas em <code>_itálico_</code>.
     </div>
   </div>
 
-  <!-- Toast -->
   <div id="toast" class="toast">copiado para área de transferência</div>
 
   <script>
-    /* Proxy local da Vercel (api/gs.js). */
     const API_LOCAL = "/api/gs";
 
     /* Limpezas de perguntas */
     const SPECIAL_Q = "Quer incluir ou remover alguma disciplina do seu cronograma?";
     const RX_SEM_EDITAL = /\(\s*se\s+for\s+sem\s+edital\s+aberto,\s*escreva\s+isso\s+na\s+(?:última|última|próxima|próxima)\s+pergunta\s*\)/gi;
     const RX_INSIRA_CARGO = /insira\s+aqui\s+o\s+cargo\s*\(\s*s[eé]?\s*necess[aá]rio\s*\)\s*e\s*informe\s*se\s*for\s*um\s*edital\s*que\s*ainda\s*n[aã]o\s*tem\s*data\s*de\s*prova/gi;
-
-    function cleanQuestionHeader(h) {
-      let s = String(h || "").trim();
-      s = s.replace(RX_SEM_EDITAL, "").replace(RX_INSIRA_CARGO, "").trim();
+    function cleanQuestionHeader(h){
+      let s = String(h||"").trim();
+      s = s.replace(RX_SEM_EDITAL,"").replace(RX_INSIRA_CARGO,"").trim();
       if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) return SPECIAL_Q;
       return s;
     }
 
-    /* Seletores de campos de edital */
+    /* Reconhecimento de Editais */
     const EDITAL_RX = n => new RegExp(`^\\s*edital\\s*${n}\\b`, "i");
     const NOME_RX   = /nome\s*do\s*concurso/i;
     const DATA_RX   = /data\s*da\s*prova/i;
-    const OBS_RX    = /observa/i;               // Observações
+    const OBS_RX    = /observa/i;
     const LINK_RX   = /link\s*do\s*edital/i;
 
     const selDay = document.getElementById("selDay");
@@ -127,7 +123,6 @@
       try{
         currentSummary = await apiGet({ action: "summary" });
         renderSummary(currentSummary);
-
         const hist = await apiGet({ action: "history" });
         fillHistorySelect(hist && hist.windows ? hist.windows : [], currentSummary);
       }catch(err){
@@ -138,25 +133,23 @@
 
     function fillHistorySelect(windows, summary){
       selDay.innerHTML = "";
-      windows.forEach((w)=>{
+      windows.forEach(w=>{
         const opt = document.createElement("option");
         opt.value = w.startISO + "||" + w.endISO;
         opt.textContent = w.label;
         selDay.appendChild(opt);
       });
-
       const cur = summary && summary.window ? (summary.window.startISO + "||" + summary.window.endISO) : null;
       if(cur){
-        const found = Array.from(selDay.options).find(o => o.value === cur);
+        const found = Array.from(selDay.options).find(o=>o.value===cur);
         if(found) found.selected = true;
       }
-
       selDay.addEventListener("change", onHistoryChange);
       btnCopyAll.addEventListener("click", copyAll);
     }
 
     async function onHistoryChange(){
-      const [startISO, endISO] = selDay.value.split("||");
+      const [startISO,endISO] = selDay.value.split("||");
       try{
         currentSummary = await apiGet({ action: "summary", startISO, endISO });
         renderSummary(currentSummary);
@@ -166,69 +159,56 @@
       }
     }
 
-    /* --------- Lógica de agrupamento e renderização --------- */
+    /* -------- Construção dos blocos preservando a ordem -------- */
 
-    function groupEditais(fields){
-      // Retorna { editais: [{n, values:[...]}], outros:[fields] }
-      const matchedIndex = new Set();
-      const editais = [];
-
-      for (const n of [1,2,3]){
-        const rx = EDITAL_RX(n);
-        const subset = fields
-          .map((f, idx) => ({...f, _i: idx}))
-          .filter(f => rx.test(f.header));
-
-        if (subset.length === 0) continue;
-
-        const pick = (re) => {
-          const f = subset.find(ff => re.test(ff.header));
-          if (f && f.value && String(f.value).trim() !== "") {
-            matchedIndex.add(f._i);
-            return String(f.value).trim();
+    // Pré-analisa os campos para cada Edital (1..3)
+    function analyzeEditais(fields){
+      const info = {
+        1: {firstIdx:null, idxSet:new Set(), name:null, date:null, obs:null, link:null, extras:[]},
+        2: {firstIdx:null, idxSet:new Set(), name:null, date:null, obs:null, link:null, extras:[]},
+        3: {firstIdx:null, idxSet:new Set(), name:null, date:null, obs:null, link:null, extras:[]},
+      };
+      fields.forEach((f, i)=>{
+        for (const n of [1,2,3]){
+          if (EDITAL_RX(n).test(f.header)){
+            if (info[n].firstIdx===null) info[n].firstIdx = i;
+            info[n].idxSet.add(i);
+            const val = String(f.value ?? "").trim();
+            if (!val) return;
+            if (NOME_RX.test(f.header) && !info[n].name) info[n].name = val;
+            else if (DATA_RX.test(f.header) && !info[n].date) info[n].date = val;
+            else if (OBS_RX.test(f.header)  && !info[n].obs)  info[n].obs  = val;
+            else if (LINK_RX.test(f.header) && !info[n].link) info[n].link = val;
+            else info[n].extras.push(val); // outros campos de Edital
           }
-          return null;
-        };
-
-        const values = [];
-        const nome = pick(NOME_RX); if (nome) values.push(nome);
-        const data = pick(DATA_RX); if (data) values.push(data);
-        const obs  = pick(OBS_RX);  if (obs)  values.push(obs);
-        const link = pick(LINK_RX); if (link) values.push(link);
-
-        // Se não achou nenhum dos 4 “principais”, ainda assim
-        // mostra outros campos do Edital X (caso existam).
-        if (values.length === 0){
-          subset.forEach(ff=>{
-            if (ff.value && String(ff.value).trim()){
-              matchedIndex.add(ff._i);
-              values.push(String(ff.value).trim());
-            }
-          });
         }
+      });
+      return info;
+    }
 
-        if (values.length > 0){
-          editais.push({ n, values });
-        }
-      }
+    function editalHasContent(e){
+      return !!(e.name || e.date || e.obs || e.link || (e.extras && e.extras.length));
+    }
 
-      const outros = fields.filter((_, i)=> !matchedIndex.has(i));
-      return { editais, outros };
+    function buildEditalValues(e){
+      const arr = [];
+      if (e.name) arr.push(e.name);
+      if (e.date) arr.push(e.date);
+      if (e.obs)  arr.push(e.obs);
+      if (e.link) arr.push(e.link);
+      if (e.extras && e.extras.length) arr.push(...e.extras);
+      return arr;
     }
 
     function renderSummary(sum){
-      if(sum && sum.window){
-        windowLabelEl.textContent = "Janela: " + sum.window.label;
-      }else{
-        windowLabelEl.textContent = "Janela atual";
-      }
+      windowLabelEl.textContent = sum && sum.window ? "Janela: "+sum.window.label : "Janela atual";
       genInfoEl.textContent = `Gerado em ${sum.generatedAt || "-"} | Fuso: ${sum.timezone || "-"}`;
       const c = sum.counts || { total:0, simples:0, complexo:0 };
       countsEl.textContent = `Total de solicitações: ${c.total} (Simples: ${c.simples} • Complexo: ${c.complexo})`;
 
       cardsEl.innerHTML = "";
       const items = (sum && sum.items) ? sum.items : [];
-      if(items.length === 0){
+      if (!items.length){
         const empty = document.createElement("div");
         empty.className = "card";
         empty.textContent = "Nenhuma solicitação nesta janela.";
@@ -237,166 +217,117 @@
       }
 
       items.forEach((it, idx)=>{
-        const card = document.createElement("div");
-        card.className = "card";
+        const card = document.createElement("div"); card.className="card";
 
         const h3 = document.createElement("h3");
-        const titleText = `SOLICITAÇÃO ${idx+1} — ${it.tipo}`;
-        h3.appendChild(document.createTextNode(titleText));
-        const chip = document.createElement("span");
-        chip.className = "chip";
+        h3.appendChild(document.createTextNode(`SOLICITAÇÃO ${idx+1} — ${it.tipo}`));
+        const chip = document.createElement("span"); chip.className="chip";
         chip.textContent = new Date(it.timestampISO).toLocaleString();
-        h3.appendChild(chip);
-        card.appendChild(h3);
+        h3.appendChild(chip); card.appendChild(h3);
 
-        const { editais, outros } = groupEditais(it.fields || []);
+        const fields = it.fields || [];
+        const ed = analyzeEditais(fields);
+        const renderedEdital = {1:false,2:false,3:false};
 
-        // Seções de Editais (condensadas)
-        editais.forEach(sec=>{
-          const s = document.createElement("div");
-          s.className = "section";
-          const t = document.createElement("div");
-          t.className = "sectionTitle";
-          t.textContent = `Edital ${sec.n}`;
-          s.appendChild(t);
-          sec.values.forEach(v=>{
-            const ln = document.createElement("div");
-            ln.className = "line";
-            ln.textContent = v;
-            s.appendChild(ln);
-          });
-          card.appendChild(s);
+        // percorre na ordem da planilha
+        fields.forEach((f, i)=>{
+          // se este índice é o primeiro de algum edital e ainda não foi renderizado, renderiza o bloco compacto
+          for (const n of [1,2,3]){
+            if (!renderedEdital[n] && ed[n].firstIdx === i && editalHasContent(ed[n])){
+              const sec = document.createElement("div"); sec.className="section";
+              const t = document.createElement("div"); t.className="sectionTitle"; t.textContent = `Edital ${n}`;
+              sec.appendChild(t);
+              buildEditalValues(ed[n]).forEach(v=>{
+                const ln = document.createElement("div"); ln.className="line"; ln.textContent = v; sec.appendChild(ln);
+              });
+              card.appendChild(sec);
+              renderedEdital[n] = true;
+              return; // não renderiza o campo individual deste índice
+            }
+          }
+
+          // se este campo pertence a um edital já renderizado, pula
+          if ([1,2,3].some(n => ed[n].idxSet.has(i))) return;
+
+          // campo normal (fora de Edital) → pergunta/resposta
+          const block = document.createElement("div"); block.className="block";
+          const q = document.createElement("div"); q.className="q"; q.textContent = cleanQuestionHeader(f.header);
+          const a = document.createElement("div"); a.className="a"; a.textContent = f.value ?? "";
+          block.appendChild(q); block.appendChild(a); card.appendChild(block);
         });
 
-        if (editais.length > 0 && outros.length > 0){
-          const div = document.createElement("div");
-          div.className = "divider";
-          card.appendChild(div);
-        }
-
-        // Outras informações (pergunta/resposta)
-        if (outros.length > 0){
-          const sec = document.createElement("div");
-          sec.className = "section";
-          const t = document.createElement("div");
-          t.className = "sectionTitle muted";
-          t.textContent = "Outras informações";
-          sec.appendChild(t);
-
-          outros.forEach(f=>{
-            const block = document.createElement("div");
-            block.className = "block";
-            const q = document.createElement("div");
-            q.className = "q";
-            q.textContent = cleanQuestionHeader(f.header);
-            const a = document.createElement("div");
-            a.className = "a";
-            a.textContent = f.value ?? "";
-            block.appendChild(q); block.appendChild(a);
-            sec.appendChild(block);
-          });
-
-          card.appendChild(sec);
-        }
-
         // Ações
-        const actions = document.createElement("div");
-        actions.className = "actions";
-        const btn = document.createElement("button");
-        btn.textContent = "Copiar";
+        const actions = document.createElement("div"); actions.className="actions";
+        const btn = document.createElement("button"); btn.textContent = "Copiar";
         btn.addEventListener("click", ()=>copyText(buildCopyFromItem(it)));
-        actions.appendChild(btn);
-        card.appendChild(actions);
+        actions.appendChild(btn); card.appendChild(actions);
 
         cardsEl.appendChild(card);
       });
     }
 
-    /* --------- Cópia para WhatsApp (com novo layout) --------- */
+    /* ---------- Cópia para WhatsApp preservando a mesma ordem ---------- */
 
     function buildCopyFromItem(it){
+      const fields = it.fields || [];
+      const ed = analyzeEditais(fields);
+      const renderedEdital = {1:false,2:false,3:false};
       const lines = [];
-      const title = it.whatsAppTitle || `*SOLICITAÇÃO — ${it.tipo || "SIMPLES"}*`;
-      lines.push(title);
+      lines.push(it.whatsAppTitle || `*SOLICITAÇÃO — ${it.tipo || "SIMPLES"}*`);
 
-      const { editais, outros } = groupEditais(it.fields || []);
+      fields.forEach((f, i)=>{
+        for (const n of [1,2,3]){
+          if (!renderedEdital[n] && ed[n].firstIdx === i && editalHasContent(ed[n])){
+            lines.push(`*Edital ${n}*`);
+            buildEditalValues(ed[n]).forEach(v=>lines.push(String(v)));
+            lines.push(""); // espaço após o bloco
+            renderedEdital[n] = true;
+            return;
+          }
+        }
+        if ([1,2,3].some(n => ed[n].idxSet.has(i))) return;
 
-      // Blocos de Editais
-      editais.forEach(sec=>{
-        lines.push(`*Edital ${sec.n}*`);
-        sec.values.forEach(v => lines.push(String(v)));
-        lines.push(""); // linha em branco entre blocos
+        lines.push(`_${cleanQuestionHeader(f.header)}_`);
+        lines.push(String(f.value ?? ""));
+        lines.push("");
       });
 
-      // Outras informações
-      if (outros.length){
-        lines.push("_Outras informações_");
-        outros.forEach(f=>{
-          lines.push(`_${cleanQuestionHeader(f.header)}_`);
-          lines.push(String(f.value ?? ""));
-          lines.push("");
-        });
-      }
-
-      // Remove linhas em branco excedentes no final
       while(lines.length && lines[lines.length-1] === "") lines.pop();
       return lines.join("\n");
     }
 
+    /* ---------- Cópia e Toast ---------- */
+
     async function copyAll(){
       const items = (currentSummary && currentSummary.items) ? currentSummary.items : [];
       const blocks = items.map(it => buildCopyFromItem(it));
-      const big = blocks.join("\n\n");
-      copyText(big);
+      copyText(blocks.join("\n\n"));
     }
-
-    /* --------- Utilidades de cópia e toast --------- */
 
     function copyText(text){
       if(!text) return;
       if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(text).then(()=>{ showToast(); })
-          .catch(()=>{ legacyCopy(text); });
-      }else{
-        legacyCopy(text);
-      }
+        navigator.clipboard.writeText(text).then(()=>showToast()).catch(()=>legacyCopy(text));
+      }else legacyCopy(text);
     }
-
     function legacyCopy(text){
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      try{ document.execCommand("copy"); showToast(); }
-      catch(e){ alert("Copie manualmente:\n\n" + text); }
+      const ta = document.createElement("textarea"); ta.value = text;
+      ta.style.position="fixed"; ta.style.left="-9999px"; document.body.appendChild(ta);
+      ta.select(); try{ document.execCommand("copy"); showToast(); }catch(e){ alert("Copie manualmente:\n\n"+text); }
       ta.remove();
     }
+    let toastTimer=null;
+    function showToast(){ toastEl.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>toastEl.classList.remove("show"),1200); }
 
-    let toastTimer = null;
-    function showToast(){
-      toastEl.classList.add("show");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(()=> toastEl.classList.remove("show"), 1200);
-    }
-
-    /* --------- Atualização automática às 08:00 --------- */
+    /* ---------- Auto refresh às 08:00 ---------- */
 
     function scheduleAutoRefreshAt8am(){
-      const now = new Date();
-      const next = new Date(now);
-      next.setHours(8,0,0,0);
-      if(now >= next){ next.setDate(next.getDate()+1); }
-      const ms = next - now;
+      const now = new Date(); const next = new Date(now);
+      next.setHours(8,0,0,0); if(now>=next) next.setDate(next.getDate()+1);
       setTimeout(async ()=>{
-        try{
-          currentSummary = await apiGet({ action: "summary" });
-          renderSummary(currentSummary);
-        }finally{
-          scheduleAutoRefreshAt8am();
-        }
-      }, ms);
+        try{ currentSummary = await apiGet({ action:"summary" }); renderSummary(currentSummary); }
+        finally{ scheduleAutoRefreshAt8am(); }
+      }, next-now);
     }
   </script>
 </body>
