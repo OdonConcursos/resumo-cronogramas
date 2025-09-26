@@ -80,14 +80,25 @@
     /* Proxy local da Vercel (api/gs.js). */
     const API_LOCAL = "/api/gs";
 
-    // Regras de limpeza de perguntas:
+    // Pergunta cujo "Ex: ..." deve ser ocultado
     const SPECIAL_Q = "Quer incluir ou remover alguma disciplina do seu cronograma?";
-    const ALWAYS_REMOVE_RX = /\(\s*se for sem edital aberto,\s*escreva isso na última pergunta\s*\)/gi;
+
+    // Remoções SEMPRE (tanto na tela quanto na cópia):
+    // 1) "(se for sem edital aberto, escreva isso na última pergunta)" OU "(... na próxima pergunta)"
+    const RX_SEM_EDITAL = /\(\s*se\s+for\s+sem\s+edital\s+aberto,\s*escreva\s+isso\s+na\s+(?:última|última|próxima|próxima)\s+pergunta\s*\)/gi;
+    // 2) "Insira aqui o cargo (se necessário) e informe se for um edital que ainda não tem data de prova"
+    const RX_INSIRA_CARGO = /insira\s+aqui\s+o\s+cargo\s*\(\s*s[eé]?\s*necess[aá]rio\s*\)\s*e\s*informe\s*se\s*for\s*um\s*edital\s*que\s*ainda\s*n[aã]o\s*tem\s*data\s*de\s*prova/gi;
 
     function cleanQuestionHeader(h) {
       let s = String(h || "").trim();
-      s = s.replace(ALWAYS_REMOVE_RX, "").trim();
-      if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) return SPECIAL_Q;
+
+      // Remove as frases padronizadas, em qualquer pergunta
+      s = s.replace(RX_SEM_EDITAL, "").replace(RX_INSIRA_CARGO, "").trim();
+
+      // Para a pergunta especial, manter só o enunciado principal (corta qualquer "Ex: ...")
+      if (s.toLowerCase().startsWith(SPECIAL_Q.toLowerCase())) {
+        return SPECIAL_Q;
+      }
       return s;
     }
 
